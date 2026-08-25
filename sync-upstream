@@ -70,6 +70,7 @@ printf 'Fetching Omarchy %s...\n' "$UPSTREAM_BRANCH"
 git -C "$repo_root" fetch "$UPSTREAM_REMOTE" "$UPSTREAM_BRANCH"
 
 split_commit=$(git -C "$repo_root" subtree split \
+  --quiet \
   --prefix="$UPSTREAM_PREFIX" \
   "$UPSTREAM_REMOTE/$UPSTREAM_BRANCH")
 current_upstream=$(git -C "$repo_root" rev-parse "refs/heads/$TRACKING_BRANCH" 2>/dev/null) ||
