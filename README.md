@@ -24,13 +24,25 @@ Changing a charge limit opens an administrator authentication prompt. The 100% a
 
 ## Update
 
+Run one command from the development checkout to fetch the original Omarchy
+power panel, merge and validate its changes, push the fork, and update the
+installed plugin:
+
 ```bash
-omarchy plugin update lvkz.power
+~/src/omarchy-power-tlp/sync-upstream
 ```
+
+The development checkout must have only the expected `origin` and
+`omarchy-upstream` remotes. The command stops before changing or pushing either
+branch when the working tree is dirty, the remote configuration is unexpected,
+upstream history was rewritten, the merge conflicts, or any verification
+fails. A rejected push also leaves the local branches unchanged.
 
 ## Upstream synchronization
 
-The `upstream-power` branch contains the unmodified history extracted from `basecamp/omarchy`'s `shell/plugins/panels/power` directory. To incorporate new upstream work:
+The `upstream-power` branch contains the unmodified history extracted from
+`basecamp/omarchy`'s `shell/plugins/panels/power` directory. The sync command
+performs this workflow automatically. The equivalent manual steps are:
 
 ```bash
 git fetch omarchy-upstream quattro

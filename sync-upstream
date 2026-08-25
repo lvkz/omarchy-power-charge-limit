@@ -1,0 +1,117 @@
+#!/bin/bash
+
+set -euo pipefail
+
+readonly UPSTREAM_REMOTE="omarchy-upstream"
+readonly UPSTREAM_URL="https://github.com/basecamp/omarchy.git"
+readonly UPSTREAM_BRANCH="quattro"
+readonly UPSTREAM_PREFIX="shell/plugins/panels/power"
+readonly ORIGIN_REMOTE="origin"
+readonly ORIGIN_REPOSITORY="lvkz/omarchy-power-tlp"
+readonly MAIN_BRANCH="main"
+readonly TRACKING_BRANCH="upstream-power"
+readonly CANDIDATE_REF="refs/omarchy-power-tlp/sync-candidate"
+
+repo_root=""
+temporary_root=""
+worktree_path=""
+
+fail() {
+  printf 'sync-upstream: %s\n' "$*" >&2
+  exit 1
+}
+
+cleanup() {
+  if [[ -n $repo_root ]]; then
+    git -C "$repo_root" update-ref -d "$CANDIDATE_REF" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n $worktree_path ]]; then
+    git -C "$repo_root" worktree remove --force "$worktree_path" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n $temporary_root && $temporary_root == /tmp/omarchy-power-tlp-sync.* ]]; then
+    rm -rf -- "$temporary_root"
+  fi
+}
+
+trap cleanup EXIT
+
+for command in git node qmllint omarchy; do
+  command -v "$command" >/dev/null 2>&1 || fail "required command not found: $command"
+done
+
+repo_root=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null) ||
+  fail "run this command from a Git checkout"
+
+[[ $(git -C "$repo_root" branch --show-current) == "$MAIN_BRANCH" ]] ||
+  fail "checkout $MAIN_BRANCH before syncing"
+[[ -z $(git -C "$repo_root" status --porcelain) ]] ||
+  fail "working tree must be clean before syncing"
+
+origin_url=$(git -C "$repo_root" remote get-url "$ORIGIN_REMOTE" 2>/dev/null) ||
+  fail "missing $ORIGIN_REMOTE remote"
+case "$origin_url" in
+  "git@github.com:${ORIGIN_REPOSITORY}.git"|"https://github.com/${ORIGIN_REPOSITORY}.git") ;;
+  *) fail "refusing to push to unexpected origin: $origin_url" ;;
+esac
+
+mapfile -t configured_remotes < <(git -C "$repo_root" remote)
+[[ ${#configured_remotes[@]} -eq 2 ]] ||
+  fail "expected only $ORIGIN_REMOTE and $UPSTREAM_REMOTE remotes"
+[[ " ${configured_remotes[*]} " == *" $ORIGIN_REMOTE "* ]] ||
+  fail "missing $ORIGIN_REMOTE remote"
+[[ " ${configured_remotes[*]} " == *" $UPSTREAM_REMOTE "* ]] ||
+  fail "missing $UPSTREAM_REMOTE remote"
+[[ $(git -C "$repo_root" remote get-url "$UPSTREAM_REMOTE") == "$UPSTREAM_URL" ]] ||
+  fail "$UPSTREAM_REMOTE points to an unexpected repository"
+
+printf 'Fetching Omarchy %s...\n' "$UPSTREAM_BRANCH"
+git -C "$repo_root" fetch "$UPSTREAM_REMOTE" "$UPSTREAM_BRANCH"
+
+split_commit=$(git -C "$repo_root" subtree split \
+  --prefix="$UPSTREAM_PREFIX" \
+  "$UPSTREAM_REMOTE/$UPSTREAM_BRANCH")
+current_upstream=$(git -C "$repo_root" rev-parse "refs/heads/$TRACKING_BRANCH" 2>/dev/null) ||
+  fail "missing local $TRACKING_BRANCH branch"
+
+if [[ $split_commit == "$current_upstream" ]]; then
+  printf 'The Omarchy power panel is already up to date.\n'
+  omarchy plugin update lvkz.power --yes
+  exit 0
+fi
+
+git -C "$repo_root" merge-base --is-ancestor "$current_upstream" "$split_commit" ||
+  fail "upstream history was rewritten; refusing to move $TRACKING_BRANCH"
+
+temporary_root=$(mktemp -d /tmp/omarchy-power-tlp-sync.XXXXXX)
+worktree_path="$temporary_root/worktree"
+git -C "$repo_root" worktree add --detach "$worktree_path" "$MAIN_BRANCH" >/dev/null
+
+printf 'Merging new power-panel changes in an isolated worktree...\n'
+if ! git -C "$worktree_path" merge --no-edit "$split_commit"; then
+  fail "upstream conflicts with the TLP customization; nothing was pushed"
+fi
+
+printf 'Validating merged plugin...\n'
+node --test "$worktree_path/tests/model.test.js"
+qmllint -I /usr/share/omarchy/shell "$worktree_path/Panel.qml"
+omarchy plugin validate "$worktree_path"
+
+candidate_commit=$(git -C "$worktree_path" rev-parse HEAD)
+git -C "$repo_root" update-ref "$CANDIDATE_REF" "$candidate_commit"
+git -C "$repo_root" worktree remove "$worktree_path"
+worktree_path=""
+
+printf 'Pushing validated updates...\n'
+git -C "$repo_root" push --atomic "$ORIGIN_REMOTE" \
+  "$candidate_commit:refs/heads/$MAIN_BRANCH" \
+  "$split_commit:refs/heads/$TRACKING_BRANCH"
+
+git -C "$repo_root" merge --ff-only "$CANDIDATE_REF"
+git -C "$repo_root" branch -f "$TRACKING_BRANCH" "$split_commit"
+
+printf 'Updating the installed plugin...\n'
+omarchy plugin update lvkz.power --yes
+
+printf 'Omarchy Power + TLP is up to date.\n'
