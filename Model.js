@@ -20,6 +20,19 @@ function parseKeyValue(raw) {
   return next
 }
 
+function parseChargeLimit(raw) {
+  var match = String(raw || "").trim().match(/^(?:\d{1,3}-)?(\d{1,3})%?$/)
+  if (!match) return 0
+  var limit = Number(match[1])
+  return limit >= 1 && limit <= 100 ? limit : 0
+}
+
+function chargeLimitCommand(limit, onBattery) {
+  if (limit === 80) return ["pkexec", "/usr/bin/tlp", "setcharge", "BAT0"]
+  if (limit === 100 && !onBattery) return ["pkexec", "/usr/bin/tlp", "fullcharge", "BAT0"]
+  return []
+}
+
 function parseProfiles(raw, previousIndex) {
   var lines = String(raw || "").split("\n")
   var list = []
@@ -94,6 +107,8 @@ if (typeof module !== "undefined") {
     clampIndex: clampIndex,
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
+    parseChargeLimit: parseChargeLimit,
+    chargeLimitCommand: chargeLimitCommand,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,

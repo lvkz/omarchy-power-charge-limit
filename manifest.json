@@ -1,10 +1,12 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.power",
-  "name": "Power",
+  "id": "lvkz.power",
+  "name": "Power + TLP",
   "version": "1.0.0",
-  "author": "Omarchy",
-  "description": "Battery, power profile, and system stats",
+  "author": "Omarchy; TLP controls by lvkz",
+  "license": "MIT",
+  "homepage": "https://github.com/lvkz/omarchy-power-tlp",
+  "description": "Omarchy power panel with TLP battery charge-limit controls",
   "kinds": [
     "bar-widget"
   ],
@@ -12,9 +14,12 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Power",
-    "description": "Battery, power profile, and system stats",
+    "displayName": "Power + TLP",
+    "description": "Battery, power profiles, system stats, and TLP charge limits",
     "category": "System",
     "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.power"
   }
 }

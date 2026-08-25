@@ -19,6 +19,10 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  property bool tlpAvailable: false
+  property int chargeLimitTarget: 0
+  property string chargeLimitStatus: ""
+  property string chargeLimitError: ""
   readonly property bool showPercentage: setting("showPercentage", false) === true
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
@@ -28,6 +32,8 @@ Panel {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
   }
+  readonly property int chargeLimit: Model.parseChargeLimit(batteryInfo.threshold)
+  readonly property bool chargeLimitSupported: tlpAvailable && chargeLimit > 0
 
   function upowerStates() {
     return {
@@ -145,8 +151,16 @@ Panel {
     // Keep last known good data if a refresh briefly returns nothing — happens
     // around AC plug/unplug events. Avoids the section collapsing mid-transition.
     if (Object.keys(next).length === 0) return
-    if (targetName === "battery") batteryInfo = next
-    else systemInfo = next
+    if (targetName === "battery") {
+      batteryInfo = next
+      var actualLimit = Model.parseChargeLimit(next.threshold)
+      if (root.chargeLimitTarget > 0 && actualLimit === root.chargeLimitTarget) {
+        root.chargeLimitStatus = root.chargeLimitTarget === 100
+          ? "Charging to 100% once"
+          : "Charge limit restored to 80%"
+        root.chargeLimitTarget = 0
+      }
+    } else systemInfo = next
   }
 
   function updateProfiles(raw) {
@@ -167,6 +181,18 @@ Panel {
     if (!profile || actionProc.running) return
     actionProc.command = ["omarchy-powerprofiles-set", root.discharging ? "battery" : "ac", profile]
     actionProc.running = true
+  }
+
+  function setChargeLimit(limit) {
+    if (!root.chargeLimitSupported || chargeActionProc.running) return
+    var command = Model.chargeLimitCommand(limit, root.discharging)
+    if (command.length === 0) return
+
+    root.chargeLimitTarget = limit
+    root.chargeLimitStatus = "Applying charge limit..."
+    root.chargeLimitError = ""
+    chargeActionProc.command = command
+    chargeActionProc.running = true
   }
 
   function togglePercentage() {
@@ -228,7 +254,40 @@ Panel {
     onExited: root.refresh()
   }
 
+  Process {
+    id: tlpProbeProc
+    command: ["/usr/bin/test", "-x", "/usr/bin/tlp"]
+    onExited: function(exitCode) { root.tlpAvailable = exitCode === 0 }
+  }
+
+  Process {
+    id: chargeActionProc
+    stdout: StdioCollector { id: chargeActionStdout; waitForEnd: true }
+    stderr: StdioCollector { id: chargeActionStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        var detail = String(chargeActionStderr.text || chargeActionStdout.text || "").trim()
+        root.chargeLimitError = exitCode === 126
+          ? "Authentication was canceled"
+          : (detail || "Unable to change the battery charge limit")
+        root.chargeLimitStatus = ""
+        root.chargeLimitTarget = 0
+      }
+      root.refresh()
+      chargeRefreshTimer.restart()
+    }
+  }
+
+  Timer {
+    id: chargeRefreshTimer
+    interval: 500
+    repeat: false
+    onTriggered: root.refresh()
+  }
+
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
+
+  Component.onCompleted: tlpProbeProc.running = true
 
   // Rotate the status phrase while the panel is open and we're in a
   // rotating state (charging or on battery). The text swap is wrapped in a
@@ -445,6 +504,73 @@ Panel {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
             }
+          }
+        }
+
+        // ---------- Battery charge limit ----------
+        PanelSeparator {
+          visible: root.chargeLimitSupported
+          foreground: root.bar.foreground
+        }
+
+        Column {
+          visible: root.chargeLimitSupported
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "BATTERY CHARGE LIMIT"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(6)
+
+            Button {
+              width: (parent.width - parent.spacing) / 2
+              text: "80%"
+              fontSize: Style.font.bodySmall
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              horizontalPadding: Style.spacing.controlPaddingX
+              verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+              bordered: true
+              active: root.chargeLimit === 80
+              enabled: !chargeActionProc.running
+              onClicked: root.setChargeLimit(80)
+            }
+
+            Button {
+              width: (parent.width - parent.spacing) / 2
+              text: "100% ONCE"
+              fontSize: Style.font.bodySmall
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              horizontalPadding: Style.spacing.controlPaddingX
+              verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+              bordered: true
+              active: root.chargeLimit === 100
+              enabled: !root.discharging && !chargeActionProc.running
+              onClicked: root.setChargeLimit(100)
+            }
+          }
+
+          Text {
+            visible: root.discharging || root.chargeLimitStatus !== "" || root.chargeLimitError !== ""
+            width: parent.width
+            text: root.chargeLimitError !== ""
+              ? root.chargeLimitError
+              : (root.chargeLimitStatus !== ""
+                  ? root.chargeLimitStatus
+                  : "Connect the charger to enable a one-time full charge")
+            color: root.chargeLimitError !== ""
+              ? Color.urgent
+              : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.6)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
           }
         }
 
