@@ -33,6 +33,23 @@ function chargeControlProbeCommand() {
   return ["/usr/bin/test", "-f", chargeControlDir + "/charge_control_end_threshold"]
 }
 
+function thresholdReadCommand() {
+  return [
+    "/usr/bin/cat",
+    chargeControlDir + "/charge_control_start_threshold",
+    chargeControlDir + "/charge_control_end_threshold"
+  ]
+}
+
+function formatThresholdOutput(raw) {
+  var nums = String(raw || "").match(/\d+/g)
+  if (!nums || nums.length < 2) return ""
+  var start = Number(nums[0])
+  var end = Number(nums[1])
+  if (start < 1 || start > 100 || end < 1 || end > 100 || start >= end) return ""
+  return start + "-" + end + "%"
+}
+
 function chargeLimitCommand(limit, onBattery) {
   var start = chargeControlDir + "/charge_control_start_threshold"
   var end = chargeControlDir + "/charge_control_end_threshold"
@@ -119,6 +136,8 @@ if (typeof module !== "undefined") {
     parseKeyValue: parseKeyValue,
     parseChargeLimit: parseChargeLimit,
     chargeControlProbeCommand: chargeControlProbeCommand,
+    thresholdReadCommand: thresholdReadCommand,
+    formatThresholdOutput: formatThresholdOutput,
     chargeLimitCommand: chargeLimitCommand,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,

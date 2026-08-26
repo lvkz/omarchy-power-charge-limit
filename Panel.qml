@@ -23,6 +23,10 @@ Panel {
   property int chargeLimitTarget: 0
   property string chargeLimitStatus: ""
   property string chargeLimitError: ""
+  // Read from sysfs, not omarchy-battery-status: UPower caches thresholds at
+  // startup and the kernel emits no uevent when they change, so the UPower
+  // value goes stale the moment a charge-limit button is pressed.
+  property string sysfsThreshold: ""
   readonly property bool showPercentage: setting("showPercentage", false) === true
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
@@ -32,7 +36,8 @@ Panel {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
   }
-  readonly property int chargeLimit: Model.parseChargeLimit(batteryInfo.threshold)
+  readonly property string effectiveThreshold: sysfsThreshold !== "" ? sysfsThreshold : (batteryInfo.threshold || "")
+  readonly property int chargeLimit: Model.parseChargeLimit(effectiveThreshold)
   readonly property bool chargeLimitSupported: chargeControlAvailable && chargeLimit > 0
 
   function upowerStates() {
@@ -144,6 +149,23 @@ Panel {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+    if (!thresholdProc.running) thresholdProc.running = true
+  }
+
+  function updateThreshold(raw) {
+    var next = Model.formatThresholdOutput(raw)
+    if (next === "") return
+    sysfsThreshold = next
+    checkChargeTarget()
+  }
+
+  function checkChargeTarget() {
+    if (root.chargeLimitTarget > 0 && root.chargeLimit === root.chargeLimitTarget) {
+      root.chargeLimitStatus = root.chargeLimitTarget === 100
+        ? "Charging to 100% — press 80% to restore the limit"
+        : "Charge limit restored to 80%"
+      root.chargeLimitTarget = 0
+    }
   }
 
   function updateKeyValue(raw, targetName) {
@@ -153,13 +175,7 @@ Panel {
     if (Object.keys(next).length === 0) return
     if (targetName === "battery") {
       batteryInfo = next
-      var actualLimit = Model.parseChargeLimit(next.threshold)
-      if (root.chargeLimitTarget > 0 && actualLimit === root.chargeLimitTarget) {
-        root.chargeLimitStatus = root.chargeLimitTarget === 100
-          ? "Charging to 100% — press 80% to restore the limit"
-          : "Charge limit restored to 80%"
-        root.chargeLimitTarget = 0
-      }
+      checkChargeTarget()
     } else systemInfo = next
   }
 
@@ -252,6 +268,12 @@ Panel {
   Process {
     id: actionProc
     onExited: root.refresh()
+  }
+
+  Process {
+    id: thresholdProc
+    command: Model.thresholdReadCommand()
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateThreshold(text) }
   }
 
   Process {
@@ -498,7 +520,7 @@ Panel {
             spacing: Style.spacing.labelGap
             InfoPair {
               label: root.chargeThresholdActive ? "Charge limit" : (root.discharging ? "Time left" : "Time to full")
-              value: root.chargeThresholdActive ? (root.batteryInfo.threshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
+              value: root.chargeThresholdActive ? (root.effectiveThreshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
             }
             InfoPair {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")

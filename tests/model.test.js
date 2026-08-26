@@ -27,6 +27,27 @@ test("chargeControlProbeCommand checks for sysfs threshold support", () => {
   ])
 })
 
+test("thresholdReadCommand reads start then end so output formats as start-end", () => {
+  assert.deepEqual(Model.thresholdReadCommand(), [
+    "/usr/bin/cat",
+    `${SYSFS}/charge_control_start_threshold`,
+    `${SYSFS}/charge_control_end_threshold`
+  ])
+})
+
+test("formatThresholdOutput builds a threshold string from cat output", () => {
+  assert.equal(Model.formatThresholdOutput("75\n80\n"), "75-80%")
+  assert.equal(Model.formatThresholdOutput("96\n100"), "96-100%")
+})
+
+test("formatThresholdOutput rejects partial and invalid output", () => {
+  assert.equal(Model.formatThresholdOutput(""), "")
+  assert.equal(Model.formatThresholdOutput("80\n"), "")
+  assert.equal(Model.formatThresholdOutput("cat: no such file"), "")
+  assert.equal(Model.formatThresholdOutput("80\n75"), "")
+  assert.equal(Model.formatThresholdOutput("0\n120"), "")
+})
+
 test("chargeLimitCommand restores the 75-80 limit, writing start before end", () => {
   const expected = [
     "pkexec",
