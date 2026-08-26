@@ -16,7 +16,7 @@ The existing battery statistics, percentage toggle, and power-profile controls a
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/lvkz/omarchy-power-tlp.git --enable
+omarchy plugin add https://github.com/lvkz/omarchy-power-charge-limit.git --enable
 ```
 
 Changing a charge limit opens an administrator authentication prompt. The 100% action is disabled while the charger is disconnected.
@@ -28,7 +28,7 @@ power panel, merge and validate its changes, push the fork, and update the
 installed plugin:
 
 ```bash
-~/src/omarchy-power-tlp/sync-upstream
+~/src/omarchy-power-charge-limit/sync-upstream
 ```
 
 The development checkout must have only the expected `origin` and
