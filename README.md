@@ -1,26 +1,25 @@
-# Omarchy Power + TLP
+# Omarchy Power + Charge Limit
 
-An upstream-tracking clone of Omarchy's power panel with two TLP battery-care controls:
+An upstream-tracking clone of Omarchy's power panel with two battery-care controls, written directly to the kernel's charge-control sysfs interface (no TLP required):
 
-- **80%** restores the configured TLP charge thresholds (75–80% on this ThinkPad).
-- **100% once** temporarily applies the vendor full-charge thresholds.
+- **80%** restores the 75–80% charge thresholds.
+- **100%** applies the vendor full-charge thresholds (96–100%). The battery firmware persists thresholds, so the limit stays at 100% until you press **80%** again.
 
 The existing battery statistics, percentage toggle, and power-profile controls are preserved.
 
 ## Requirements
 
 - Omarchy 4.0 or newer
-- TLP 1.10 or newer
-- A battery exposed as `BAT0` with start and stop threshold support
+- A battery exposed as `BAT0` with `charge_control_start_threshold` and `charge_control_end_threshold` sysfs support
 - An active Polkit authentication agent
 
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/lvkz/omarchy-power-tlp.git --enable
+omarchy plugin add https://github.com/lvkz/omarchy-power-charge-limit.git --enable
 ```
 
-Changing a charge limit opens an administrator authentication prompt. The 100% action is disabled while the charger is disconnected. TLP restores its configured thresholds after a reboot.
+Changing a charge limit opens an administrator authentication prompt. The 100% action is disabled while the charger is disconnected.
 
 ## Update
 
@@ -29,7 +28,7 @@ power panel, merge and validate its changes, push the fork, and update the
 installed plugin:
 
 ```bash
-~/src/omarchy-power-tlp/sync-upstream
+~/src/omarchy-power-charge-limit/sync-upstream
 ```
 
 The development checkout must have only the expected `origin` and

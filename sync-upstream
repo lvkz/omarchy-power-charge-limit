@@ -7,10 +7,10 @@ readonly UPSTREAM_URL="https://github.com/basecamp/omarchy.git"
 readonly UPSTREAM_BRANCH="quattro"
 readonly UPSTREAM_PREFIX="shell/plugins/panels/power"
 readonly ORIGIN_REMOTE="origin"
-readonly ORIGIN_REPOSITORY="lvkz/omarchy-power-tlp"
+readonly ORIGIN_REPOSITORY="lvkz/omarchy-power-charge-limit"
 readonly MAIN_BRANCH="main"
 readonly TRACKING_BRANCH="upstream-power"
-readonly CANDIDATE_REF="refs/omarchy-power-tlp/sync-candidate"
+readonly CANDIDATE_REF="refs/omarchy-power-charge-limit/sync-candidate"
 
 repo_root=""
 temporary_root=""
@@ -30,7 +30,7 @@ cleanup() {
     git -C "$repo_root" worktree remove --force "$worktree_path" >/dev/null 2>&1 || true
   fi
 
-  if [[ -n $temporary_root && $temporary_root == /tmp/omarchy-power-tlp-sync.* ]]; then
+  if [[ -n $temporary_root && $temporary_root == /tmp/omarchy-power-charge-limit-sync.* ]]; then
     rm -rf -- "$temporary_root"
   fi
 }
@@ -85,13 +85,13 @@ fi
 git -C "$repo_root" merge-base --is-ancestor "$current_upstream" "$split_commit" ||
   fail "upstream history was rewritten; refusing to move $TRACKING_BRANCH"
 
-temporary_root=$(mktemp -d /tmp/omarchy-power-tlp-sync.XXXXXX)
+temporary_root=$(mktemp -d /tmp/omarchy-power-charge-limit-sync.XXXXXX)
 worktree_path="$temporary_root/worktree"
 git -C "$repo_root" worktree add --detach "$worktree_path" "$MAIN_BRANCH" >/dev/null
 
 printf 'Merging new power-panel changes in an isolated worktree...\n'
 if ! git -C "$worktree_path" merge --no-edit "$split_commit"; then
-  fail "upstream conflicts with the TLP customization; nothing was pushed"
+  fail "upstream conflicts with the charge-limit customization; nothing was pushed"
 fi
 
 printf 'Validating merged plugin...\n'
@@ -115,4 +115,4 @@ git -C "$repo_root" branch -f "$TRACKING_BRANCH" "$split_commit"
 printf 'Updating the installed plugin...\n'
 omarchy plugin update lvkz.power --yes
 
-printf 'Omarchy Power + TLP is up to date.\n'
+printf 'Omarchy Power + Charge Limit is up to date.\n'

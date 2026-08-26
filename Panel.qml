@@ -19,10 +19,14 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
-  property bool tlpAvailable: false
+  property bool chargeControlAvailable: false
   property int chargeLimitTarget: 0
   property string chargeLimitStatus: ""
   property string chargeLimitError: ""
+  // Read from sysfs, not omarchy-battery-status: UPower caches thresholds at
+  // startup and the kernel emits no uevent when they change, so the UPower
+  // value goes stale the moment a charge-limit button is pressed.
+  property string sysfsThreshold: ""
   readonly property bool showPercentage: setting("showPercentage", false) === true
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
@@ -32,8 +36,9 @@ Panel {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
   }
-  readonly property int chargeLimit: Model.parseChargeLimit(batteryInfo.threshold)
-  readonly property bool chargeLimitSupported: tlpAvailable && chargeLimit > 0
+  readonly property string effectiveThreshold: sysfsThreshold !== "" ? sysfsThreshold : (batteryInfo.threshold || "")
+  readonly property int chargeLimit: Model.parseChargeLimit(effectiveThreshold)
+  readonly property bool chargeLimitSupported: chargeControlAvailable && chargeLimit > 0
 
   function upowerStates() {
     return {
@@ -144,6 +149,23 @@ Panel {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+    if (!thresholdProc.running) thresholdProc.running = true
+  }
+
+  function updateThreshold(raw) {
+    var next = Model.formatThresholdOutput(raw)
+    if (next === "") return
+    sysfsThreshold = next
+    checkChargeTarget()
+  }
+
+  function checkChargeTarget() {
+    if (root.chargeLimitTarget > 0 && root.chargeLimit === root.chargeLimitTarget) {
+      root.chargeLimitStatus = root.chargeLimitTarget === 100
+        ? "Charging to 100% — press 80% to restore the limit"
+        : "Charge limit restored to 80%"
+      root.chargeLimitTarget = 0
+    }
   }
 
   function updateKeyValue(raw, targetName) {
@@ -153,13 +175,7 @@ Panel {
     if (Object.keys(next).length === 0) return
     if (targetName === "battery") {
       batteryInfo = next
-      var actualLimit = Model.parseChargeLimit(next.threshold)
-      if (root.chargeLimitTarget > 0 && actualLimit === root.chargeLimitTarget) {
-        root.chargeLimitStatus = root.chargeLimitTarget === 100
-          ? "Charging to 100% once"
-          : "Charge limit restored to 80%"
-        root.chargeLimitTarget = 0
-      }
+      checkChargeTarget()
     } else systemInfo = next
   }
 
@@ -255,9 +271,15 @@ Panel {
   }
 
   Process {
-    id: tlpProbeProc
-    command: ["/usr/bin/test", "-x", "/usr/bin/tlp"]
-    onExited: function(exitCode) { root.tlpAvailable = exitCode === 0 }
+    id: thresholdProc
+    command: Model.thresholdReadCommand()
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateThreshold(text) }
+  }
+
+  Process {
+    id: chargeControlProbeProc
+    command: Model.chargeControlProbeCommand()
+    onExited: function(exitCode) { root.chargeControlAvailable = exitCode === 0 }
   }
 
   Process {
@@ -287,7 +309,7 @@ Panel {
 
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
 
-  Component.onCompleted: tlpProbeProc.running = true
+  Component.onCompleted: chargeControlProbeProc.running = true
 
   // Rotate the status phrase while the panel is open and we're in a
   // rotating state (charging or on battery). The text swap is wrapped in a
@@ -498,7 +520,7 @@ Panel {
             spacing: Style.spacing.labelGap
             InfoPair {
               label: root.chargeThresholdActive ? "Charge limit" : (root.discharging ? "Time left" : "Time to full")
-              value: root.chargeThresholdActive ? (root.batteryInfo.threshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
+              value: root.chargeThresholdActive ? (root.effectiveThreshold || "-") : (root.batteryFlowIdle ? "-" : (root.batteryInfo.time || "—"))
             }
             InfoPair {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
@@ -544,7 +566,7 @@ Panel {
 
             Button {
               width: (parent.width - parent.spacing) / 2
-              text: "100% ONCE"
+              text: "100%"
               fontSize: Style.font.bodySmall
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
@@ -564,7 +586,7 @@ Panel {
               ? root.chargeLimitError
               : (root.chargeLimitStatus !== ""
                   ? root.chargeLimitStatus
-                  : "Connect the charger to enable a one-time full charge")
+                  : "Connect the charger to enable a full charge")
             color: root.chargeLimitError !== ""
               ? Color.urgent
               : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.6)
