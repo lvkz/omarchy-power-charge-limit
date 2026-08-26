@@ -27,9 +27,19 @@ function parseChargeLimit(raw) {
   return limit >= 1 && limit <= 100 ? limit : 0
 }
 
+var chargeControlDir = "/sys/class/power_supply/BAT0"
+
+function chargeControlProbeCommand() {
+  return ["/usr/bin/test", "-f", chargeControlDir + "/charge_control_end_threshold"]
+}
+
 function chargeLimitCommand(limit, onBattery) {
-  if (limit === 80) return ["pkexec", "/usr/bin/tlp", "setcharge", "BAT0"]
-  if (limit === 100 && !onBattery) return ["pkexec", "/usr/bin/tlp", "fullcharge", "BAT0"]
+  var start = chargeControlDir + "/charge_control_start_threshold"
+  var end = chargeControlDir + "/charge_control_end_threshold"
+  // start < end must hold at every point or the kernel rejects the write:
+  // lowering writes start first, raising writes end first.
+  if (limit === 80) return ["pkexec", "/usr/bin/sh", "-c", "echo 75 > " + start + " && echo 80 > " + end]
+  if (limit === 100 && !onBattery) return ["pkexec", "/usr/bin/sh", "-c", "echo 100 > " + end + " && echo 96 > " + start]
   return []
 }
 
@@ -108,6 +118,7 @@ if (typeof module !== "undefined") {
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
     parseChargeLimit: parseChargeLimit,
+    chargeControlProbeCommand: chargeControlProbeCommand,
     chargeLimitCommand: chargeLimitCommand,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,

@@ -19,7 +19,7 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
-  property bool tlpAvailable: false
+  property bool chargeControlAvailable: false
   property int chargeLimitTarget: 0
   property string chargeLimitStatus: ""
   property string chargeLimitError: ""
@@ -33,7 +33,7 @@ Panel {
     return !!(device && device.isPresent)
   }
   readonly property int chargeLimit: Model.parseChargeLimit(batteryInfo.threshold)
-  readonly property bool chargeLimitSupported: tlpAvailable && chargeLimit > 0
+  readonly property bool chargeLimitSupported: chargeControlAvailable && chargeLimit > 0
 
   function upowerStates() {
     return {
@@ -156,7 +156,7 @@ Panel {
       var actualLimit = Model.parseChargeLimit(next.threshold)
       if (root.chargeLimitTarget > 0 && actualLimit === root.chargeLimitTarget) {
         root.chargeLimitStatus = root.chargeLimitTarget === 100
-          ? "Charging to 100% once"
+          ? "Charging to 100% — press 80% to restore the limit"
           : "Charge limit restored to 80%"
         root.chargeLimitTarget = 0
       }
@@ -255,9 +255,9 @@ Panel {
   }
 
   Process {
-    id: tlpProbeProc
-    command: ["/usr/bin/test", "-x", "/usr/bin/tlp"]
-    onExited: function(exitCode) { root.tlpAvailable = exitCode === 0 }
+    id: chargeControlProbeProc
+    command: Model.chargeControlProbeCommand()
+    onExited: function(exitCode) { root.chargeControlAvailable = exitCode === 0 }
   }
 
   Process {
@@ -287,7 +287,7 @@ Panel {
 
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
 
-  Component.onCompleted: tlpProbeProc.running = true
+  Component.onCompleted: chargeControlProbeProc.running = true
 
   // Rotate the status phrase while the panel is open and we're in a
   // rotating state (charging or on battery). The text swap is wrapped in a
@@ -544,7 +544,7 @@ Panel {
 
             Button {
               width: (parent.width - parent.spacing) / 2
-              text: "100% ONCE"
+              text: "100%"
               fontSize: Style.font.bodySmall
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
@@ -564,7 +564,7 @@ Panel {
               ? root.chargeLimitError
               : (root.chargeLimitStatus !== ""
                   ? root.chargeLimitStatus
-                  : "Connect the charger to enable a one-time full charge")
+                  : "Connect the charger to enable a full charge")
             color: root.chargeLimitError !== ""
               ? Color.urgent
               : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.6)
