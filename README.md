@@ -28,7 +28,7 @@ power panel, merge and validate its changes, push the fork, and update the
 installed plugin:
 
 ```bash
-~/src/omarchy-power-charge-limit/sync-upstream
+~/code/plugins/omarchy-power-charge-limit/sync-upstream
 ```
 
 The development checkout must have only the expected `origin` and
