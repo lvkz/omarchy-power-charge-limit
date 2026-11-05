@@ -28,10 +28,6 @@ Panel {
   // value goes stale the moment a charge-limit button is pressed.
   property string sysfsThreshold: ""
   readonly property bool showPercentage: setting("showPercentage", false) === true
-  // With the percentage shown the button paints a text block wider than an
-  // icon, so the open-panel mark takes the painted width instead of the
-  // icon-sized fraction of the slot the fallback assumes.
-  readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -354,14 +350,17 @@ Panel {
     }
   }
 
-  BarIconButton {
+  // BarIconButton scales its text into a single icon box, which shrank
+  // "79% <icon>" to unreadable; WidgetButton renders text at body size.
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.showPercentage && !vertical
       ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
       : root.batteryIcon()
-    slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    fontSize: Style.font.body
+    horizontalMargin: 6
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return
